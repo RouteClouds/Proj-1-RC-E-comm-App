@@ -1,0 +1,79 @@
+name: CI/CD - Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOCKERHUB_ORG: routeclouds
+  BACKEND_IMAGE: routeclouds-backend
+  FRONTEND_IMAGE: routeclouds-frontend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 18 (for lightweight checks)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Backend quick build check (non-blocking)
+        working-directory: Project-1-Code/backend
+        run: |
+          npm ci --include=dev || true
+          npm run build || echo "Skipping backend build check"
+
+      - name: Frontend quick build check (non-blocking)
+        working-directory: Project-1-Code/frontend
+        run: |
+          npm ci --include=dev || true
+          npm run build || echo "Skipping frontend build check"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push Backend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Project-1-Code/backend
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.DOCKERHUB_ORG }}/${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.DOCKERHUB_ORG }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+
+      - name: Build & Push Frontend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Project-1-Code/frontend
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.DOCKERHUB_ORG }}/${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.DOCKERHUB_ORG }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+
+      - name: Summary
+        run: |
+          echo "Backend: $DOCKERHUB_ORG/$BACKEND_IMAGE:latest and :${{ github.sha }}"
+          echo "Frontend: $DOCKERHUB_ORG/$FRONTEND_IMAGE:latest and :${{ github.sha }}"
